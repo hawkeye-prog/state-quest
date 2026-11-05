@@ -1163,7 +1163,7 @@ function askType(host, { head, visual = '', answer, maxLen = 30, upper = false }
   return new Promise(resolve => {
     host.innerHTML = `<div class="qCard">${head}${visual}<div class="typeRow"><input class="textIn" maxlength="${maxLen}" autocomplete="off" autocapitalize="${upper ? 'characters' : 'words'}" autocorrect="off" spellcheck="false" enterkeyhint="done" aria-label="Type your answer" placeholder="Type here"><button class="btn">Check</button></div>
       ${upper ? '' : '<button class="hintBtn">💡 Hint</button>'}<div class="feedback" aria-live="polite"></div><div class="nextRow"></div></div>`;
-    const inp = $('input', host), btn = $('.btn', host), hb = $('.hintBtn', host);
+    const inp = $('.typeRow input', host), btn = $('.typeRow .btn', host), hb = $('.hintBtn', host);
     let hints = 0, done = false; if (window.__test === true) host.dataset.ans = answer;
     if (upper) inp.addEventListener('input', () => { inp.value = inp.value.toUpperCase().replace(/[^A-Z]/g, ''); });
     if (hb) hb.onclick = () => {
@@ -1790,6 +1790,8 @@ ACTS.spell = {
 const CORE_ACTS = ['shape', 'capital', 'map'];
 const EXTRA_ACTS = ['spell', 'match', 'fill', 'tf', 'label', 'abbr', 'scramble', 'chat', 'sort', 'search', 'read'];
 const QUEST_PATTERN = ['shape', 'capital', 'X', 'map', 'shape', 'X', 'capital', 'X'];
+const MAPCAP_PATTERN = ['map', 'capital', 'label', 'capital', 'map', 'match'];
+function mapcapNext() { const i = S.mcIdx || 0; S.mcIdx = i + 1; return MAPCAP_PATTERN[i % MAPCAP_PATTERN.length]; }
 function questNext() {
   const q = S.quest || (S.quest = { i: 0, legs: 0 });
   const slot = QUEST_PATTERN[q.i % QUEST_PATTERN.length]; q.i++;
@@ -1797,7 +1799,7 @@ function questNext() {
 }
 SCREENS.activity = ({ id, mode = 'practice' }) => {
   const A = ACTS[id]; const view = $('#view');
-  view.innerHTML = `<div class="narrow"><div class="actHead"><div class="ic">${A.icon}</div><div><h2>${esc(A.title)}</h2><div class="sub">${mode === 'quest' ? '🚐 ' : ''}${esc(regionName(S.focus))}</div></div><div class="dots" id="dots"></div></div>
+  view.innerHTML = `<div class="narrow"><div class="actHead"><div class="ic">${A.icon}</div><div><h2>${esc(A.title)}</h2><div class="sub">${mode === 'quest' ? '🚐 ' : mode === 'mapcap' ? '🗺️ Map & capitals: ' : ''}${esc(regionName(S.focus))}</div></div><div class="dots" id="dots"></div></div>
     <div class="miniRoad" title="Practice time until games"><i style="width:${(S.work / workGoal() * 100).toFixed(1)}%"></i></div><div id="actBody"></div></div>`;
   let alive = true; const leaveFns = [], results = [];
   roundStats = { right: 0, total: 0, stars: 0 };
@@ -1838,15 +1840,15 @@ function showRoundEnd(id, mode, results) {
   const plates = S.newPlates.splice(0);
   save(); renderTop();
   Snd.play(stars === 3 ? 'win' : 'fanfare'); if (stars === 3) bigConfetti();
-  const nextId = mode === 'quest' ? questNext() : id;
+  const chain = mode === 'quest' || mode === 'mapcap', nextId = mode === 'quest' ? questNext() : mode === 'mapcap' ? mapcapNext() : id;
   const msg = stars === 3 ? pick(['Amazing!', 'Super job!', 'Fantastic!', 'You rock!']) : stars === 2 ? pick(['Great work!', 'Nice going!', 'Well done!']) : pick(['Good try!', 'Keep going!', 'Practice makes perfect!']);
   $('#actBody').innerHTML = `<div class="qCard result"><h2>${msg}</h2><div class="starsLine" aria-label="${stars} stars">${'⭐'.repeat(stars)}${'☆'.repeat(3 - stars)}</div>
     ${r.total ? `<div class="score">${r.right}/${r.total}</div>` : ''}<p class="muted">You earned <b>${r.stars} stars</b> this round.</p>
     ${plates.length ? `<h3 style="margin-top:14px">New license plate${plates.length > 1 ? 's' : ''}!</h3><div class="plates" style="grid-template-columns:repeat(auto-fill,minmax(140px,1fr));margin-top:8px">${plates.map((p, k) => `<div class="stampIn" style="animation-delay:${k * .25}s">${plateHTML(BY_ID[p])}</div>`).join('')}</div>` : ''}
-    <div class="nextRow" style="flex-wrap:wrap">${mode === 'quest' ? `<button class="btn big" id="goNext">Next: ${ACTS[nextId].icon} ${esc(ACTS[nextId].title)}</button>` : `<button class="btn big" id="goNext">Play again</button>`}<button class="btn sec" id="goHome">${mode === 'quest' ? 'Stop for now' : 'Pick another'}</button></div></div>`;
+    <div class="nextRow" style="flex-wrap:wrap">${chain ? `<button class="btn big" id="goNext">Next: ${ACTS[nextId].icon} ${esc(ACTS[nextId].title)}</button>` : `<button class="btn big" id="goNext">Play again</button>`}<button class="btn sec" id="goHome">${chain ? 'Stop for now' : 'Pick another'}</button></div></div>`;
   if (plates.length) setTimeout(() => Snd.play('stamp'), 150);
   $('#goNext').onclick = () => { Snd.play('tap'); go('activity', { id: nextId, mode }); };
-  $('#goHome').onclick = () => { Snd.play('tap'); go(mode === 'quest' ? 'home' : 'practice'); };
+  $('#goHome').onclick = () => { Snd.play('tap'); go(chain ? 'home' : 'practice'); };
   $('.dots') && ($('#dots').innerHTML = results.map(ok => `<i class="${ok ? 'ok' : 'bad'}"></i>`).join(''));
 }
 
@@ -2452,6 +2454,7 @@ SCREENS.home = () => {
           <button class="btn big grow" id="tripBtn">${S.quest && S.quest.i ? '▶ Keep driving' : '▶ Start today’s trip'}</button>
           ${ready ? '<button class="btn big sun" id="playBtn">🎮 Play</button>' : ''}
         </div>
+        <button class="btn sec wide" id="mapcapBtn" style="margin-top:10px">🗺️ Map &amp; capitals only</button>
         <p class="muted small" style="margin:10px 2px 0">The road trip mixes shapes, capitals and maps with the other activities. Practice time only counts while you are working.</p>
       </div>
       <div class="stack">
@@ -2468,6 +2471,7 @@ SCREENS.home = () => {
     <div class="sectionTitle"><h3>My trip so far</h3></div>
     <div class="statRow"><div class="stat"><b>${dayStreak()}</b><span>day streak 🔥</span></div><div class="stat"><b>${S.answers ? Math.round(S.correct / S.answers * 100) : 0}%</b><span>right answers</span></div><div class="stat"><b>${Math.round(S.totalWork / 60)}</b><span>minutes practiced</span></div></div>`;
   $('#tripBtn').onclick = () => { Snd.play('tap'); go('activity', { id: S.quest && S.quest.i ? questNext() : (S.quest = { i: 0 }, questNext()), mode: 'quest' }); };
+  $('#mapcapBtn').onclick = () => { Snd.play('tap'); go('activity', { id: mapcapNext(), mode: 'mapcap' }); };
   if (ready) $('#playBtn').onclick = () => { Snd.play('tap'); go('arcade'); };
   $('#acts').onclick = e => { const b = e.target.closest('[data-act]'); if (b) { Snd.play('tap'); go('activity', { id: b.dataset.act, mode: 'practice' }); } };
   $$('[data-go]').forEach(b => b.onclick = () => { Snd.play('tap'); go(b.dataset.go); });
@@ -2485,7 +2489,9 @@ function showPlates(ids) {
 SCREENS.practice = () => {
   $('#view').innerHTML = `<div class="sectionTitle" style="margin-top:4px"><h2>Practice room</h2></div>
     <div class="card"><h3 style="margin-bottom:8px">Region</h3><div class="regionPick" id="focus" style="justify-content:flex-start">${regionChips(S.focus)}</div></div>
+    <button class="btn wide" id="mapcap2" style="margin-top:14px">🗺️ Map &amp; capitals only (keeps going round after round)</button>
     <div class="actGrid" id="acts" style="margin-top:14px">${[...CORE_ACTS, ...EXTRA_ACTS].map(id => { const A = ACTS[id]; return `<button class="actTile ${A.prio ? 'prio' : ''}" data-act="${id}" style="--tint:${A.tint}"><div class="ic">${A.icon}</div><b>${esc(A.title)}</b><span>${esc(A.blurb)}</span></button>`; }).join('')}</div>`;
+  $('#mapcap2').onclick = () => { Snd.play('tap'); go('activity', { id: mapcapNext(), mode: 'mapcap' }); };
   $('#acts').onclick = e => { const b = e.target.closest('[data-act]'); if (b) { Snd.play('tap'); go('activity', { id: b.dataset.act, mode: 'practice' }); } };
   $('#focus').onclick = e => { const b = e.target.closest('[data-r]'); if (!b) return; S.focus = b.dataset.r; save(); Snd.play('select'); $('#focus').innerHTML = regionChips(S.focus); };
   return {};
